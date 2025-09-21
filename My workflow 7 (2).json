@@ -1,0 +1,257 @@
+{
+  "name": "My workflow 7",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "a708d20e-b35e-4a7d-aaed-72e36a7658c4",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3e7a7e7c-8873-4310-bb45-da7ca39c1f90",
+      "name": "Webhook",
+      "webhookId": "a708d20e-b35e-4a7d-aaed-72e36a7658c4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get query directly from Set node\nconst queryItem = $node[\"Set User Query\"].json; // exact node name\nconst query = {\n  location: (queryItem.query_location || '').toLowerCase(),\n  budget: Number(queryItem.query_budget || 0),\n  days: Number(queryItem.query_days || 0),\n  description: queryItem.query_description || ''\n};\n\n// Get all packages from Google Sheets / CSV node\nlet packageItems = $items(\"Get Package Rows\"); // array of items\nif (!Array.isArray(packageItems)) packageItems = [packageItems]; // ensure array\n\n// Map to JSON\npackageItems = packageItems.map(i => i.json);\n\n// Filter packages\nconst filteredPackages = packageItems.filter(pkg => {\n  const locationOk = !query.location || (pkg.location || '').toLowerCase().includes(query.location);\n  const budgetOk = !query.budget || (query.budget >= Number(pkg.budget_min) && query.budget <= Number(pkg.budget_max));\n  const daysOk = !query.days || (query.days >= Number(pkg.days_min) && query.days <= Number(pkg.days_max));\n  return locationOk && budgetOk && daysOk;\n});\n\n// Fallback if no match\nconst candidates = filteredPackages.length ? filteredPackages : packageItems.slice(0, 10);\n\n// Build AI prompt\nconst prompt = `\nUser request:\n${JSON.stringify(query)}\n\nCandidate packages:\n${JSON.stringify(candidates, null, 2)}\n\nTask: Pick the single BEST package that matches the user request.\nReturn EXACTLY this JSON format:\n{\n  \"selected_package\": {...},\n  \"score\": 0-1,\n  \"reason\": \"short explanation\"\n}\nDo not add extra text.\n`;\n\nreturn [{ json: { prompt } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        176
+      ],
+      "id": "8f6b19f0-e40a-48c5-bf95-9f8228163936",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cb14d940-7599-43fc-8580-f06deb1292ec",
+              "name": "query_location",
+              "value": "={{ $json.body.location }}",
+              "type": "string"
+            },
+            {
+              "id": "6f0e7404-0878-429d-9a4e-106a858f08a7",
+              "name": "query_budget",
+              "value": "={{ $json.body.budget }}",
+              "type": "string"
+            },
+            {
+              "id": "ec98b0d1-c35a-490c-87f3-3d13db7dcf8a",
+              "name": "query_days",
+              "value": "={{ $json.body.days }}",
+              "type": "string"
+            },
+            {
+              "id": "1413def8-bc2c-42ba-a23c-240e6a8c1445",
+              "name": "query_description",
+              "value": "={{ $json.body.description }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "60d47fa4-a01d-4624-83ac-639dbfb38a35",
+      "name": "Set User Query"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1MYkmQz5s5UF0j8yZ95SDc1uDdl2p4MdomCBcQXfa3es",
+          "mode": "list",
+          "cachedResultName": "travel",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1MYkmQz5s5UF0j8yZ95SDc1uDdl2p4MdomCBcQXfa3es/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1MYkmQz5s5UF0j8yZ95SDc1uDdl2p4MdomCBcQXfa3es/edit#gid=0"
+        },
+        "combineFilters": "OR",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        448,
+        0
+      ],
+      "id": "50387970-12e3-4809-9f5a-77427e2c2ff3",
+      "name": "Get Package Rows",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "JgHf0Tjjx22a92d5",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={\n  \"role\": \"system\",\n  \"content\": \"You are a travel package selection assistant. Your job is to pick the single BEST package from a list of candidates based on user requirements. Always return ONLY valid JSON in the exact format requested.return the output in a pharagraph with all the details regarding the package \"\n}\n",
+              "role": "system"
+            },
+            {
+              "content": "={\n  \"role\": \"user\",\n  \"content\": \"{{ $json.prompt }}\"\n}\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        768,
+        176
+      ],
+      "id": "54cb59a2-7ad2-4ea1-9951-b062ca0982bd",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "VrkHEYg4owDTjbcy",
+          "name": "sk"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the AI assistant content from the first item\nconst aiText = items[0].json.message?.content || '';\n\ntry {\n    // Parse JSON string into object\n    const parsed = JSON.parse(aiText);\n    return [{ json: parsed }];\n} catch (e) {\n    // If parsing fails, return raw text for debugging\n    return [{ json: { error: \"AI response not valid JSON\", raw: aiText } }];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        176
+      ],
+      "id": "93bfef56-9461-4996-949a-4f54854857d0",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1328,
+        176
+      ],
+      "id": "cd5026b9-4030-4f17-b1a8-3ae1fc43e432",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Set User Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set User Query": {
+      "main": [
+        [
+          {
+            "node": "Get Package Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Package Rows": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2eb78d39-5b6f-4fe8-ba75-17da138e3a5b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1a4c90819a63469e5260811deb2b390ae408ff0e1d4766f098e3c289b814f3a6"
+  },
+  "id": "82FfiepcDPhLBzsF",
+  "tags": []
+}
